@@ -4,7 +4,7 @@ Tensorflow implementation of object detections using tflite models.
  - [Part 2: Predict for single image](https://github.com/pete710592/TensorflowLite_UBI#part-2-predict-for-single-image)  
 
 ## Part 1: Environment setup  
-This code was tested with Ubuntu 16.04 / Ubuntu 18.04 / WSL (Windows Subsystem for Linux).  
+This code was tested with Ubuntu 16.04 / Ubuntu 18.04 / WSL / Raspberry Pi.  
 ## 1-1. Update system & install requirement  
 ```shell
 echo "deb https://packages.cloud.google.com/apt coral-edgetpu-stable main" | sudo tee /etc/apt/sources.list.d/coral-edgetpu.list
@@ -15,11 +15,15 @@ sudo apt-get -y dist-upgrade
 ```  
 
 ## 1-2. Setup tensorflow-lite virtual environment & install requirement  
+Setup ```tflite-env``` virtual environment.  
 ```shell
 sudo apt-get -y install python3-venv
 python3 -m venv tflite-env
 echo "source tflite-env/bin/activate" >> ~/.bashrc
 source ~/.bashrc
+```  
+Install requirements.  
+```shell
 pip3 install tqdm
 pip3 install --upgrade pip
 pip3 install --extra-index-url https://google-coral.github.io/py-repo/ tflite_runtime
