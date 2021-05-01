@@ -1,0 +1,7 @@
+# Large files
+images
+videos
+
+# Catche files
+.ipynb_checkpoints
+__pycache__
