@@ -1,17 +1,3 @@
-######## Webcam Object Detection Using Tensorflow-trained Classifier #########
-#
-# Author: Evan Juras
-# Date: 10/2/19
-# Description: 
-# This program uses a TensorFlow Lite model to perform object detection on a
-# video. It draws boxes and scores around the objects of interest in each frame
-# from the video.
-#
-# This code is based off the TensorFlow Lite image classification example at:
-# https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/examples/python/label_image.py
-#
-# I added my own method of drawing boxes and labels using OpenCV.
-
 # Import packages
 import os
 import argparse
@@ -21,21 +7,25 @@ import sys
 import importlib.util
 
 # Define and parse input arguments
-parser = argparse.ArgumentParser()
-parser.add_argument('--modeldir', help='Folder the .tflite file is located in',
-                    required=True)
-parser.add_argument('--graph', help='Name of the .tflite file, if different than detect.tflite',
-                    default='detect.tflite')
-parser.add_argument('--labels', help='Name of the labelmap file, if different than labelmap.txt',
-                    default='labelmap.txt')
-parser.add_argument('--threshold', help='Minimum confidence threshold for displaying detected objects',
-                    default=0.65)
-parser.add_argument('--video', help='Name of the video file',
-                    default='test.mp4')
-parser.add_argument('--edgetpu', help='Use Coral Edge TPU Accelerator to speed up detection',
-                    action='store_true')
+def get_argument():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--modeldir', help='Folder the .tflite file is located in',
+                        required=True)
+    parser.add_argument('--graph', help='Name of the .tflite file, if different than detect.tflite',
+                        default='detect.tflite')
+    parser.add_argument('--labels', help='Name of the labelmap file, if different than labelmap.txt',
+                        default='labelmap.txt')
+    parser.add_argument('--threshold', help='Minimum confidence threshold for displaying detected objects',
+                        default=0.5)
+    parser.add_argument('--video', help='Name of the video file',
+                        default='test.mp4')
+    parser.add_argument('--edgetpu', help='Use Coral Edge TPU Accelerator to speed up detection',
+                        action='store_true')
+    parser.add_argument('--display_label', help='Display label on the top of bounding boxes, choose [0] accuracy / [1] pixels / [2] distance',
+                        default=0)
+    return parser.parse_args()
 
-args = parser.parse_args()
+args = get_argument()
 
 MODEL_NAME = args.modeldir
 GRAPH_NAME = args.graph
@@ -43,6 +33,12 @@ LABELMAP_NAME = args.labels
 VIDEO_NAME = args.video
 min_conf_threshold = float(args.threshold)
 use_TPU = args.edgetpu
+display_label = int(args.display_label)
+
+
+# Setting for camera and car informations
+focal_length = 430
+car_width = 1.75
 
 # Import TensorFlow libraries
 # If tflite_runtime is installed, import interpreter from tflite_runtime, else import from regular tensorflow
@@ -109,17 +105,17 @@ input_std = 127.5
 
 # Open video file
 video = cv2.VideoCapture(VIDEO_PATH)
-imW = video.get(cv2.CAP_PROP_FRAME_WIDTH)
-imH = video.get(cv2.CAP_PROP_FRAME_HEIGHT)
+imW = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+imH = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+fps = round(video.get(cv2.CAP_PROP_FPS))
 
 # Video writer
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 model_idx = MODEL_NAME.split('/')[1][:2]
-OUTPUT_NAME = VIDEO_NAME.replace('videos/', 'videos/{}-'.format(model_idx))
-out = cv2.VideoWriter(OUTPUT_NAME, fourcc, 30.0, (1280, 720))
+OUTPUT_NAME = VIDEO_NAME.replace('videos/', 'predictions/{}-'.format(model_idx))
+out = cv2.VideoWriter(OUTPUT_NAME, fourcc, fps, (imW, imH))
 
 while(video.isOpened()):
-
     # Acquire frame and resize to expected shape [1xHxWx3]
     ret, frame = video.read()
     if not ret:
@@ -141,12 +137,11 @@ while(video.isOpened()):
     boxes = interpreter.get_tensor(output_details[0]['index'])[0] # Bounding box coordinates of detected objects
     classes = interpreter.get_tensor(output_details[1]['index'])[0] # Class index of detected objects
     scores = interpreter.get_tensor(output_details[2]['index'])[0] # Confidence of detected objects
-    #num = interpreter.get_tensor(output_details[3]['index'])[0]  # Total number of detected objects (inaccurate and not needed)
+    num = interpreter.get_tensor(output_details[3]['index'])[0]  # Total number of detected objects (inaccurate and not needed)
 
     # Loop over all detections and draw detection box if confidence is above minimum threshold
     for i in range(len(scores)):
         if ((scores[i] > min_conf_threshold) and (scores[i] <= 1.0)):
-
             # Get bounding box coordinates and draw box
             # Interpreter can return coordinates that are outside of image dimensions, need to force them to be within image using max() and min()
             ymin = int(max(1,(boxes[i][0] * imH)))
@@ -156,33 +151,35 @@ while(video.isOpened()):
             
             cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), (10, 255, 0), 4)
 
-            # Draw label
-            # object_name = labels[int(classes[i])] # Look up object name from "labels" array using class index
-            # label = '%s: %d%%' % (object_name, int(scores[i]*100)) # Example: 'person: 72%'
-            # labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
-            # label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
-            # cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
-            # cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw label text
-
-            # Draw pixel length
-            focal_length = 430
-            car_width = 1.8
-            distance = focal_length * car_width / int(ymax - ymin)
-            label = '%s: %.2f m' % ('distance', distance) # Example: 'pixels: 150'
-            labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
-            label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
-            cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
-            cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw label text
-
-    # All the results have been drawn on the frame, so it's time to display it.
+            if display_label == 0:
+                # Draw label accuracy
+                object_name = labels[int(classes[i])] # Look up object name from "labels" array using class index
+                label = '%s: %d%%' % (object_name, int(scores[i]*100)) # Example: 'person: 72%'
+                labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
+                label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
+                cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
+                cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw accuracy text
+            elif display_label == 1:
+                # Draw pixel length
+                pixels = int(ymax - ymin)
+                label = '%s: %d pixels' % ('width', pixels) # Example: 'width: 150 pixels'
+                labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
+                label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
+                cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
+                cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw pixel length text
+            elif display_label == 2:
+                # Draw distance
+                pixels = int(ymax - ymin)
+                distance = focal_length * car_width / pixels
+                label = '%s: %.2f m' % ('distance', distance) # Example: 'distance: 3.05 m'
+                labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
+                label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
+                cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
+                cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw distance text
+    
+    # Save video with model index
     out.write(frame)
-    # cv2.imshow('Object detector', frame)
-
-    # Press 'q' to quit
-    # if cv2.waitKey(1) == ord('q'):
-    #     break
 
 # Clean up
 video.release()
 out.release()
-cv2.destroyAllWindows()

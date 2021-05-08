@@ -1,17 +1,3 @@
-######## Webcam Object Detection Using Tensorflow-trained Classifier #########
-#
-# Author: Evan Juras
-# Date: 9/28/19
-# Description: 
-# This program uses a TensorFlow Lite object detection model to perform object 
-# detection on an image or a folder full of images. It draws boxes and scores 
-# around the objects of interest in each image.
-#
-# This code is based off the TensorFlow Lite image classification example at:
-# https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/examples/python/label_image.py
-#
-# I added my own method of drawing boxes and labels using OpenCV.
-
 # Import packages
 import os
 import argparse
@@ -22,29 +8,37 @@ import glob
 import importlib.util
 
 # Define and parse input arguments
-parser = argparse.ArgumentParser()
-parser.add_argument('--modeldir', help='Folder the .tflite file is located in',
-                    required=True)
-parser.add_argument('--graph', help='Name of the .tflite file, if different than detect.tflite',
-                    default='detect.tflite')
-parser.add_argument('--labels', help='Name of the labelmap file, if different than labelmap.txt',
-                    default='labelmap.txt')
-parser.add_argument('--threshold', help='Minimum confidence threshold for displaying detected objects',
-                    default=0.5)
-parser.add_argument('--image', help='Name of the single image to perform detection on. To run detection on multiple images, use --imagedir',
-                    default=None)
-parser.add_argument('--imagedir', help='Name of the folder containing images to perform detection on. Folder must contain only images.',
-                    default=None)
-parser.add_argument('--edgetpu', help='Use Coral Edge TPU Accelerator to speed up detection',
-                    action='store_true')
+def get_argument():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--modeldir', help='Folder the .tflite file is located in',
+                        required=True)
+    parser.add_argument('--graph', help='Name of the .tflite file, if different than detect.tflite',
+                        default='detect.tflite')
+    parser.add_argument('--labels', help='Name of the labelmap file, if different than labelmap.txt',
+                        default='labelmap.txt')
+    parser.add_argument('--threshold', help='Minimum confidence threshold for displaying detected objects',
+                        default=0.5)
+    parser.add_argument('--image', help='Name of the single image to perform detection on. To run detection on multiple images, use --imagedir',
+                        default=None)
+    parser.add_argument('--imagedir', help='Name of the folder containing images to perform detection on. Folder must contain only images.',
+                        default=None)
+    parser.add_argument('--edgetpu', help='Use Coral Edge TPU Accelerator to speed up detection',
+                        action='store_true')
+    parser.add_argument('--display_label', help='Display label on the top of bounding boxes, choose [0] accuracy / [1] pixels / [2] distance',
+                        default=0)
+    return parser.parse_args()
 
-args = parser.parse_args()
-
+args = get_argument()
 MODEL_NAME = args.modeldir
 GRAPH_NAME = args.graph
 LABELMAP_NAME = args.labels
 min_conf_threshold = float(args.threshold)
 use_TPU = args.edgetpu
+display_label = int(args.display_label)
+
+# Setting for camera and car informations
+focal_length = 2315
+car_width = 1.75
 
 # Parse input image name and directory. 
 IM_NAME = args.image
@@ -57,7 +51,7 @@ if (IM_NAME and IM_DIR):
 
 # If neither an image or a folder are specified, default to using 'test1.jpg' for image name
 if (not IM_NAME and not IM_DIR):
-    IM_NAME = 'test1.jpg'
+    IM_NAME = 'test_01.jpg'
 
 # Import TensorFlow libraries
 # If tflite_runtime is installed, import interpreter from tflite_runtime, else import from regular tensorflow
@@ -77,7 +71,6 @@ if use_TPU:
     # If user has specified the name of the .tflite file, use that name, otherwise use default 'edgetpu.tflite'
     if (GRAPH_NAME == 'detect.tflite'):
         GRAPH_NAME = 'edgetpu.tflite'
-
 
 # Get path to current working directory
 CWD_PATH = os.getcwd()
@@ -131,7 +124,6 @@ input_std = 127.5
 
 # Loop over every image and perform detection
 for image_path in images:
-
     # Load image and resize to expected shape [1xHxWx3]
     image = cv2.imread(image_path)
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -151,12 +143,11 @@ for image_path in images:
     boxes = interpreter.get_tensor(output_details[0]['index'])[0] # Bounding box coordinates of detected objects
     classes = interpreter.get_tensor(output_details[1]['index'])[0] # Class index of detected objects
     scores = interpreter.get_tensor(output_details[2]['index'])[0] # Confidence of detected objects
-    #num = interpreter.get_tensor(output_details[3]['index'])[0]  # Total number of detected objects (inaccurate and not needed)
+    num = interpreter.get_tensor(output_details[3]['index'])[0]  # Total number of detected objects (inaccurate and not needed)
 
     # Loop over all detections and draw detection box if confidence is above minimum threshold
     for i in range(len(scores)):
         if ((scores[i] > min_conf_threshold) and (scores[i] <= 1.0)):
-
             # Get bounding box coordinates and draw box
             # Interpreter can return coordinates that are outside of image dimensions, need to force them to be within image using max() and min()
             ymin = int(max(1,(boxes[i][0] * imH)))
@@ -166,36 +157,33 @@ for image_path in images:
             
             cv2.rectangle(image, (xmin,ymin), (xmax,ymax), (10, 255, 0), 2)
 
-            # Draw label
-            # object_name = labels[int(classes[i])] # Look up object name from "labels" array using class index
-            # label = '%s: %d%%' % (object_name, int(scores[i]*100)) # Example: 'person: 72%'
-            # labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
-            # label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
-            # cv2.rectangle(image, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
-            # cv2.putText(image, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw label text
-            
-            # Draw pixel length
-            focal_length = 2286
-            car_width = 1.70
-            pixels = int(ymax - ymin)
-            distance = focal_length * car_width / pixels
-            label = '%s: %.2f m' % ('distance', distance) # Example: 'pixels: 150'
-            labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
-            label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
-            cv2.rectangle(image, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
-            cv2.putText(image, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw label text
-            
-    # All the results have been drawn on the image, now display the image
-    # cv2.imwrite('output.jpg', image)
-    # cv2.imshow('Object detector', image)
+            if display_label == 0:
+                # Draw label accuracy
+                object_name = labels[int(classes[i])] # Look up object name from "labels" array using class index
+                label = '%s: %d%%' % (object_name, int(scores[i]*100)) # Example: 'person: 72%'
+                labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
+                label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
+                cv2.rectangle(image, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
+                cv2.putText(image, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw accuracy text
+            elif display_label == 1:
+                # Draw pixel length
+                pixels = int(ymax - ymin)
+                label = '%s: %d pixels' % ('width', pixels) # Example: 'width: 150 pixels'
+                labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
+                label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
+                cv2.rectangle(image, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
+                cv2.putText(image, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw pixel length text
+            elif display_label == 2:
+                # Draw distance
+                pixels = int(ymax - ymin)
+                distance = focal_length * car_width / pixels
+                label = '%s: %.2f m' % ('distance', distance) # Example: 'distance: 3.05 m'
+                labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
+                label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
+                cv2.rectangle(image, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
+                cv2.putText(image, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw distance text
     
+    # Save image with model index
     model_idx = MODEL_NAME.split('/')[1][:2]
-    OUTPUT_NAME = IM_NAME.replace('images/', 'images/{}-'.format(model_idx))
+    OUTPUT_NAME = IM_NAME.replace('images/', 'predictions/{}-'.format(model_idx))
     cv2.imwrite(OUTPUT_NAME, image)
-
-    # Press any key to continue to next image, or press 'q' to quit
-    # if cv2.waitKey(0) == ord('q'):
-    #     break
-
-# Clean up
-cv2.destroyAllWindows()
