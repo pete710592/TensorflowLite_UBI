@@ -145,6 +145,55 @@ for image_path in images:
     scores = interpreter.get_tensor(output_details[2]['index'])[0] # Confidence of detected objects
     num = interpreter.get_tensor(output_details[3]['index'])[0]  # Total number of detected objects (inaccurate and not needed)
 
+    # List bboxes that satisfy the threshold
+    bbox_list = []
+
+    for i in range(len(scores)):
+        if ((scores[i] > min_conf_threshold) and (scores[i] <= 1.0)):
+            xmin = int(max(1,(boxes[i][1] * imW)))
+            xmax = int(min(imW,(boxes[i][3] * imW)))
+            bbox_list.append((xmax+xmin)//2)
+    
+    # Find the value closest to the middle
+    if len(bbox_list) != 0:
+        middle_value = min(bbox_list, key=lambda x: abs(x - imW//2))
+    
+        if 0.4*imW < middle_value < 0.6*imW:
+            middle_idx = bbox_list.index(middle_value)
+            ymin = int(max(1,(boxes[middle_idx][0] * imH)))
+            xmin = int(max(1,(boxes[middle_idx][1] * imW)))
+            ymax = int(min(imH,(boxes[middle_idx][2] * imH)))
+            xmax = int(min(imW,(boxes[middle_idx][3] * imW)))
+            
+            cv2.rectangle(image, (xmin,ymin), (xmax,ymax), (10, 255, 0), 2)
+            
+            if display_label == 0:
+                # Draw label accuracy
+                object_name = labels[int(classes[i])] # Look up object name from "labels" array using class index
+                label = '%s: %d%%' % (object_name, int(scores[i]*100)) # Example: 'person: 72%'
+                labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
+                label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
+                cv2.rectangle(image, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
+                cv2.putText(image, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw accuracy text
+            elif display_label == 1:
+                # Draw pixel length
+                pixels = int(ymax - ymin)
+                label = '%s: %d pixels' % ('width', pixels) # Example: 'width: 150 pixels'
+                labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
+                label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
+                cv2.rectangle(image, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
+                cv2.putText(image, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw pixel length text
+            elif display_label == 2:
+                # Draw distance
+                pixels = int(ymax - ymin)
+                distance = focal_length * car_width / pixels
+                label = '%s: %.2f m' % ('distance', distance) # Example: 'distance: 3.05 m'
+                labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
+                label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
+                cv2.rectangle(image, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
+                cv2.putText(image, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw distance text
+
+    '''
     # Loop over all detections and draw detection box if confidence is above minimum threshold
     for i in range(len(scores)):
         if ((scores[i] > min_conf_threshold) and (scores[i] <= 1.0)):
@@ -182,7 +231,8 @@ for image_path in images:
                 label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
                 cv2.rectangle(image, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
                 cv2.putText(image, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw distance text
-    
+    '''
+
     # Save image with model index
     model_idx = MODEL_NAME.split('/')[1][:2]
     OUTPUT_NAME = IM_NAME.replace('images/', 'predictions/{}-'.format(model_idx))
